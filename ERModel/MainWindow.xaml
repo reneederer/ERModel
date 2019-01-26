@@ -5,8 +5,14 @@
         xmlns:local="clr-namespace:ERModel"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
-    <Grid x:Name="gridTreeView" HorizontalAlignment="Left" VerticalAlignment="Stretch" Margin="20,20,0,20" Width="545">
-        <TreeView x:Name="treeView"></TreeView>
-        <Grid x:Name="gridColumns" HorizontalAlignment="Left" Height="374" Margin="563,3,-217,0" VerticalAlignment="Top" Width="199"/>
+    <Grid VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Margin="0,80,-0.4,0">
+        <ComboBox x:Name="cmbConnection" HorizontalAlignment="Left" Margin="25,-61,0,0" VerticalAlignment="Top" Width="273"/>
+        <Button x:Name="btnEditConfig" Content="Button" HorizontalAlignment="Left" Margin="692,-59,0,0" VerticalAlignment="Top" Width="75"/>
+        <Grid x:Name="gridTreeView" HorizontalAlignment="Left" VerticalAlignment="Stretch" Background="AliceBlue" Width="437" Margin="25,0,0,25">
+            <TreeView x:Name="treeView"/>
+        </Grid>
+        <Grid x:Name="gridColumns" Margin="496,5,25,25" Background="Black" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
+            <DataGrid x:Name="dgColumns"/>
+        </Grid>
     </Grid>
 </Window>

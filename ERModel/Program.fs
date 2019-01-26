@@ -2,14 +2,11 @@
     open System
     open System.Collections.Generic
     open System.Linq
-    open System.Text
-    open System.Threading.Tasks
     open Oracle.ManagedDataAccess.Client
-    open System.Windows
     open System.Windows.Controls
-    open System.Windows.Markup
     open FsXaml
     open System.Windows
+    open FSharp.Data
 
     type Column =
         { columnName : string
@@ -24,16 +21,39 @@
           tableName : string
         }
 
+    type ColumnDetails =
+        { columnName : string
+          columnType : string
+          nullable : string
+        }
+
+    type ColumnView =
+        { columnName : string
+          columnType : string
+          columnNullable : string
+        }
+
     type MainWindow = XAML<"MainWindow.xaml">
+    type Config = XmlProvider<"Config.xml">
+    let config = Config.GetSample()
 
-    [<STAThread>]
-    [<EntryPoint>]
-    let main argv = 
-        let conn = new OracleConnection()
-        conn.ConnectionString <-
-            "User Id=ENTWICKLER;Password=1234;Data Source=127.0.0.1:1521/ORA12C"
-        conn.Open()
+    let getColumnDetails tableOwner tableName (conn : OracleConnection) =
+        use command = conn.CreateCommand(CommandText = sprintf "
+            select column_name, data_type, nullable
+            from all_tab_columns
+            where owner = '%s' and table_name = '%s'
+            order by column_name" tableOwner tableName)
+        use reader = command.ExecuteReader()
+        [ while reader.Read() do
+            yield
+                { columnName = reader.GetString(0)
+                  columnType = reader.GetString(1)
+                  columnNullable = reader.GetString(2)
+                }
+        ] |> Seq.ofList
 
+
+    let loadDict (conn : OracleConnection) =
         let owner = "ENTWICKLER"
         let dict = new Dictionary<Table, List<Column>>()
         use command = conn.CreateCommand(CommandText = sprintf "
@@ -65,47 +85,126 @@
                       referencedTableName = r_tableName
                       referencedColumnName = r_columnName
                     })
-         
+        dict
+
+    let withConnection (f : OracleConnection -> 'b) connectionString =
+        use conn = new OracleConnection(connectionString)
+        conn.Open()
+        f conn
+
+    type HeaderType =
+        | Normal
+        | Reversed
+    
+    [<STAThread>]
+    [<EntryPoint>]
+    let main argv = 
         let app = Application()
         let w = MainWindow()
-        let rec addColumns (tableItem : TreeViewItem) (table : Table) (dict : Dictionary<Table, List<Column>>) = 
-            for currentColumn in dict.[table] do
-                let columnItem =
-                    new TreeViewItem(
-                        Header =
+        let rec createTreeViewItem (table : Table) (oColumn : option<Column>) headerType (dict : Dictionary<Table, List<Column>>) =
+            let linkTable =
+                match headerType, oColumn with
+                | Normal, Some column ->
+                    { tableOwner = column.referencedOwner
+                      tableName = column.referencedTableName
+                    }
+                | Normal, None
+                | Reversed, _ ->
+                    { tableOwner = table.tableOwner
+                      tableName = table.tableName
+                    }
+            let t =
+                new TreeViewItem(
+                    Header =
+                        match headerType, oColumn with
+                        | Normal, Some column ->
                             sprintf
-                                "%s (%snull) => %s%s.%s"
-                                currentColumn.columnName
-                                (if currentColumn.columnNullable then "" else "not ")
-                                (if currentColumn.referencedOwner = table.tableOwner then "" else currentColumn.referencedOwner + ".")
-                                currentColumn.referencedTableName
-                                currentColumn.referencedColumnName)
-                tableItem.Items.Add(columnItem) |> ignore
-                if dict.[{ tableOwner = table.tableOwner; tableName = currentColumn.referencedTableName}].Any() then
-                    let placeholderItem = TreeViewItem(Header = "Loading...")
-                    columnItem.Expanded.Add(
-                        fun _ ->
-                            if columnItem.Items.Count = 1
-                               && string (columnItem.Items.[0] :?> TreeViewItem).Header = "Loading..."
-                            then
-                                columnItem.Items.Clear()
-                                let referencedTable =
-                                    { tableOwner = currentColumn.referencedOwner
-                                      tableName = currentColumn.referencedTableName
-                                    }
-                                addColumns
-                                    columnItem
-                                    referencedTable
-                                    dict
-
-
+                                "%s.%s (%snull) => %s.%s"
+                                table.tableName
+                                column.columnName
+                                (if column.columnNullable then "" else "not ")
+                                column.referencedTableName 
+                                column.referencedColumnName
+                        | Normal, None -> table.tableName
+                        | Reversed, Some column ->
+                            sprintf
+                                "%s.%s <= %s.%s (%snull)"
+                                column.referencedTableName 
+                                column.referencedColumnName
+                                table.tableName
+                                column.columnName
+                                (if column.columnNullable then "" else "not ")
+                        | Reversed, None -> failwith "Unsupported condition: Reversed, None")
+            if dict.[linkTable].Count >= -1 then
+                let placeholderItem = TreeViewItem(Header = "Loading...")
+                t.Expanded.Add(
+                    fun _ ->
+                        if t.Items.Count = 1 && t.Items.[0] :?> TreeViewItem = placeholderItem
+                        then replaceTreeViewColumns
+                                t
+                                linkTable
+                                dict
+                )
+                t.Items.Add placeholderItem |> ignore
+            t.Selected.Add(fun evt ->
+                withConnection
+                    (fun conn ->
+                        w.dgColumns.ItemsSource <-
+                            getColumnDetails linkTable.tableOwner linkTable.tableName conn
+                        evt.Handled <- true
                     )
-                    columnItem.Items.Add placeholderItem |> ignore
-        for tableData in dict do
-            let currentTable = tableData.Key
-            let currentColumns = tableData.Value
-            let tableItem = TreeViewItem(Header = currentTable.tableName)
-            addColumns tableItem tableData.Key dict
-            w.treeView.Items.Add(tableItem) |> ignore
+                    config.ConnectionStrings.[w.cmbConnection.SelectedIndex].Value 
+            )
+            t
+        and replaceTreeViewColumns
+            (parent : ItemsControl)
+            (table : Table)
+            (dict : Dictionary<Table, List<Column>>) =
+            parent.Items.Clear()
+            for column in dict.[table] do
+                let t =
+                    createTreeViewItem
+                        table
+                        (Some column)
+                        Normal
+                        dict
+                parent.Items.Add t |> ignore
+            let rDict =
+                dict
+                    .Where(fun x ->
+                        x.Value.Any(fun v -> v.referencedTableName = table.tableName))
+                    .Select(fun x -> x.Key, x.Value.Where(fun v -> v.referencedTableName = table.tableName))
+            if rDict.Any() then
+                let rTablesItem = TreeViewItem(Header = "_r")
+                for kv in rDict do
+                    let rTable, rColumns = kv
+                    for rColumn in rColumns do
+                        let t =
+                            createTreeViewItem
+                                rTable
+                                (Some rColumn)
+                                Reversed
+                                dict
+                        rTablesItem.Items.Add t |> ignore
+                parent.Items.Add rTablesItem |> ignore
+
+
+        let createTreeView (parent : ItemsControl) (dict : Dictionary<Table, List<Column>>) = 
+            for kv in dict do
+                let (currentTable, currentColumns) = (kv.Key, kv.Value)
+                let t =
+                    createTreeViewItem
+                        { tableOwner = currentTable.tableOwner; tableName = currentTable.tableName }
+                        None
+                        Normal
+                        dict
+                parent.Items.Add t |> ignore
+
+        for connectionString in config.ConnectionStrings do
+            w.cmbConnection.Items.Add(connectionString.Name) |> ignore
+        if w.cmbConnection.Items.Count >= 1 then
+            w.cmbConnection.SelectedIndex <- 0
+            let dict = withConnection loadDict config.ConnectionStrings.[w.cmbConnection.SelectedIndex].Value
+            createTreeView w.treeView dict
         app.Run(w)
 

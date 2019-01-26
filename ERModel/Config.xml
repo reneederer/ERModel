@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<Config>
+  <ConnectionStrings>
+    <ConnectionString name="ENTWICKLER/ORA12C">User Id=ENTWICKLER;Password=1234;Data Source=127.0.0.1:1521/ORA12C</ConnectionString>
+    <ConnectionString name="system/ORA13C">User Id=system;Password=1234;Data Source=127.0.0.1:1521/ORA13C</ConnectionString>
+  </ConnectionStrings>
+</Config>
