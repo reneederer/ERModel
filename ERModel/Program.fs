@@ -118,29 +118,28 @@ module View =
 
 
     let loadDict (conn : OracleConnection) =
-        let owner = "ENTWICKLER"
         let dict = new Dictionary<Table, List<Column>>()
         use command = conn.CreateCommand(CommandText = sprintf "
-        select allt.table_name, atc.column_name, atc.nullable, rucc.owner, rucc.table_name, ratc.column_name
+        select allt.owner, allt.table_name, atc.column_name, atc.nullable, rucc.owner, rucc.table_name, ratc.column_name
   from all_tables allt
-  left join user_constraints uc on allt.owner = uc.owner and allt.table_name = uc.table_name and uc.constraint_type = 'R'
+  join user_constraints uc on allt.owner = uc.owner and allt.table_name = uc.table_name and uc.constraint_type = 'R'
   left join user_cons_columns ucc on (uc.owner = ucc.owner and uc.table_name = ucc.table_name and uc.constraint_name = ucc.constraint_name)
   left join all_tab_columns atc on (ucc.owner = atc.owner and ucc.table_name = atc.table_name and ucc.column_name = atc.column_name)
   left join user_cons_columns rucc on (uc.r_owner = rucc.owner and uc.r_constraint_name = rucc.constraint_name and ucc.position = rucc.position)
   left join all_tab_columns ratc on (rucc.owner = ratc.owner and rucc.table_name = ratc.table_name and rucc.column_name = ratc.column_name)
-  where upper(allt.owner) = '%s' order by allt.table_name, atc.column_name" owner)
+  where atc.column_name is not null order by allt.table_name, atc.column_name")
         use reader = command.ExecuteReader()
         while reader.Read() do
-            let tableName = reader.GetString(0)
-            let table = { tableOwner = owner; tableName = tableName }
+            let tableName = reader.GetString(1)
+            let table = { tableOwner = reader.GetString(0); tableName = tableName }
             if not <| dict.ContainsKey(table) then
                 dict.Add(table, new List<Column>())
             if not <| reader.IsDBNull(1) then
-                let columnName = reader.GetString(1)
-                let nullable = reader.GetString(2)
-                let r_owner = reader.GetString(3)
-                let r_tableName = reader.GetString(4)
-                let r_columnName = reader.GetString(5)
+                let columnName = reader.GetString(2)
+                let nullable = reader.GetString(3)
+                let r_owner = reader.GetString(4)
+                let r_tableName = reader.GetString(5)
+                let r_columnName = reader.GetString(6)
                 dict.[table].Add(
                     { columnName = columnName
                       columnNullable = nullable = "Y"
@@ -196,7 +195,7 @@ module View =
                             column.columnName
                             (if column.columnNullable then "" else "not ")
                     | Reversed, None -> failwith "Unsupported condition: Reversed, None")
-        if dict.[linkTable].Count >= -1 then
+        if dict.[table].Count >= 1 then
             let placeholderItem = TreeViewItem(Header = "Loading...")
             t.Expanded.Add(
                 fun _ ->
@@ -224,6 +223,7 @@ module View =
         (table : Table)
         (dict : Dictionary<Table, List<Column>>) =
         parent.Items.Clear()
+        let a = dict.[table]
         for column in dict.[table] do
             let t =
                 createTreeViewItem
