@@ -4,6 +4,7 @@ open System.Collections.Generic
 open System.Linq
 open Oracle.ManagedDataAccess.Client
 open System.Windows.Controls
+open System.Windows.Input
 open FsXaml
 open System.Windows
 open FSharp.Data
@@ -13,6 +14,7 @@ open System.Windows.Interop
 open System.Runtime.InteropServices
 open System.Threading
 open System.Diagnostics
+open System.Data
 module NativeMethods =
     let HWND_BROADCAST = 0xffff
     [<DllImport("user32")>]
@@ -44,6 +46,7 @@ module View =
         { Name : string
           Nullable : string
           Type : string
+          Comment : string
         }
 
     type MainWindowBase = XAML<"MainWindow.xaml">
@@ -71,6 +74,7 @@ module View =
         { Name = ""
           Type = ""
           Nullable = ""
+          Comment = ""
         })
     type App() =
         inherit Application()
@@ -93,11 +97,19 @@ module View =
     type Config = XmlProvider<"Config.xml">
     let mutable config = Config.Load(Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "Config.xml"))
 
+    let executeQuery queryText (conn : OracleConnection) =
+        use command = conn.CreateCommand(CommandText = queryText)
+        use reader = command.ExecuteReader()
+        use dataTable = new DataTable()
+        dataTable.Load(reader)
+        w.dgQuery.ItemsSource <- dataTable.DefaultView
+
     let getColumnDetails tableOwner tableName (conn : OracleConnection) =
         use command = conn.CreateCommand(CommandText = sprintf "
-            select column_name, nullable, data_type, data_length, data_precision, data_scale
-            from all_tab_columns
-            where owner = '%s' and table_name = '%s'
+            select atc.column_name, atc.nullable, atc.data_type, atc.data_length, atc.data_precision, atc.data_scale, acc.comments
+            from all_tab_columns atc
+            left join all_col_comments acc on atc.owner = acc.owner and atc.table_name = acc.table_name and atc.column_name = acc.column_name
+            where atc.owner = '%s' and atc.table_name = '%s'
             order by column_name" tableOwner tableName)
         use reader = command.ExecuteReader()
         [ while reader.Read() do
@@ -113,6 +125,7 @@ module View =
                           | false, true -> sprintf "%s(%i)" v (reader.GetInt32(4))
                           | false, false -> sprintf "%s(%i,%i)" v (reader.GetInt32(4)) (reader.GetInt32(5))
                           | true, false -> sprintf "%s(%i)" v (reader.GetInt32(5))
+                  Comment = if reader.IsDBNull(6) then "" else reader.GetString(6)
                 }
         ] |> Seq.ofList
 
@@ -216,6 +229,10 @@ module View =
                     evt.Handled <- true
                 )
                 config.ConnectionStrings.[w.cmbConnection.SelectedIndex]
+            w.tbQuery.Text <- sprintf "SELECT *\r\nFROM %s\r\nFETCH FIRST 50 ROWS ONLY" linkTable.tableName
+            withConnection
+                (fun conn -> executeQuery w.tbQuery.Text conn)
+                config.ConnectionStrings.[w.cmbConnection.SelectedIndex]
         )
         t
     and replaceTreeViewColumns
@@ -312,5 +329,11 @@ module View =
         w.cmbConnection.KeyUp.Add(fun evt ->
             if evt.Key = Input.Key.Enter then
                 load w.cmbConnection.Text)
+        w.tbQuery.KeyUp.Add(fun evt ->
+            if (evt.Key = Input.Key.Enter && (Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl)))
+               || evt.Key = Input.Key.F8 || evt.Key = Input.Key.F5 then
+                withConnection
+                    (fun conn -> executeQuery w.tbQuery.Text conn)
+                    config.ConnectionStrings.[w.cmbConnection.SelectedIndex])
         initCmbConnectionString()
         app.Run w

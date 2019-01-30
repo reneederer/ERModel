@@ -16,7 +16,13 @@
             <TextBlock x:Name="tbTable" HorizontalAlignment="Stretch" Margin="0,70,0,0" TextWrapping="Wrap" VerticalAlignment="Top" FontSize="14"/>
             <Button x:Name="btnEditConfig" HorizontalAlignment="Right" VerticalAlignment="Top" Width="25" Height="25">
             </Button>
-            <DataGrid x:Name="dgColumns" ItemsSource="{Binding Path=columnDetails}"  Margin="0,98,0,0" HorizontalAlignment="Stretch" AutoGenerateColumns="True" CanUserAddRows="False">
+            <DataGrid x:Name="dgColumns" ItemsSource="{Binding Path=columnDetails}" Margin="0,98,0,380" HorizontalAlignment="Stretch" AutoGenerateColumns="True" CanUserAddRows="False">
+                <!--<DataGridTextColumn Binding="{Binding columnName}" Header="Name" Width="*"/>
+                <DataGridTextColumn Binding="{Binding columnType}" Width="*" Header="Type"/>
+                <DataGridTextColumn Binding="{Binding columnNullable}" Width="*" Header="Nullable"/>-->
+            </DataGrid>
+            <TextBox x:Name="tbQuery" HorizontalAlignment="Stretch" VerticalAlignment="Bottom" Margin="0,0,0,215" TextWrapping="Wrap" AcceptsReturn="True" Text="SELECT * FROM DUAL" Height="149"/>
+            <DataGrid x:Name="dgQuery" ItemsSource="{Binding Path=columnDetails}" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" AutoGenerateColumns="True" CanUserAddRows="False" Height="200">
                 <!--<DataGridTextColumn Binding="{Binding columnName}" Header="Name" Width="*"/>
                 <DataGridTextColumn Binding="{Binding columnType}" Width="*" Header="Type"/>
                 <DataGridTextColumn Binding="{Binding columnNullable}" Width="*" Header="Nullable"/>-->
